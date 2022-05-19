@@ -425,9 +425,9 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
             }
             $username = urlencode($username);
             $result = $this->remote_call("https://www.tiktok.com/@{$username}?lang=en", false);
-            dump($result);
+//            dump($result);
             $json_string = $this->parse_json($result);
-            dd($json_string);
+//            dd($json_string);
             if (!empty($json_string)) {
                 $jsonData = json_decode($json_string);
                 if (isset($jsonData->UserModule, $jsonData->UserPage)) {
