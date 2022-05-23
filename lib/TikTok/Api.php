@@ -69,7 +69,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Challenge detail
-         * 
+         *
          * Accepts challenge name and returns challenge detail object or false on failure
          *
          * @param string $challenge
@@ -102,7 +102,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Challenge Feed
-         * 
+         *
          * Accepts challenge name and returns challenge feed object or false on faliure
          *
          * @param string $challenge_name
@@ -156,7 +156,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Music detail
-         * 
+         *
          * Accepts music ID and returns music detail object or false on failure
          *
          * @param string $music_id
@@ -189,7 +189,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Music feed
-         * 
+         *
          * Accepts music id and returns music feed object or false on failure
          *
          * @param string $music_id
@@ -243,9 +243,9 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Non watermarked video
-         * 
+         *
          * Accepts video post url and returns non-watermarked video object or false on failure
-         * 
+         *
          * Uses private API method as fallback
          *
          * @param string $url
@@ -253,7 +253,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
          */
         public function getNoWatermarkLegacy($url = "")
         {
-            // This is old way to get non-watermarked video url for videos posted before August 2020. 
+            // This is old way to get non-watermarked video url for videos posted before August 2020.
             // To obtain non-watermaked video url for newer videos, there is no easy way to so.
             // Contact me via my profile contact details to purchase a copy of my script that works with newer videos.
             if (!preg_match("/https?:\/\/([^\.]+)?\.tiktok\.com/", $url)) {
@@ -330,7 +330,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Non watermarked video
-         * 
+         *
          * - Accepts video post url and returns non-watermarked video object or false on failure
          * - Uses musical.ly endpoint but may not last for long
          *
@@ -359,7 +359,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Trending/ForYou Feed
-         * 
+         *
          * Accepts $maxCursor offset and returns trending video feed object or false on failure
          *
          * @param integer $maxCursor
@@ -406,7 +406,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * User detail
-         * 
+         *
          * Accepts tiktok username and returns user detail object or false on failure
          *
          * @param string $username
@@ -417,14 +417,29 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
             if (empty($username)) {
                 throw new \Exception("Invalid Username");
             }
-            $cacheKey = 'user-' . $username;
+            $username = urlencode($username);
+            return $this->getUserByUrl("https://www.tiktok.com/@{$username}?lang=en");
+        }
+        /**
+         * User by user url
+         *
+         * Accepts tiktok user url and returns user detail object or false on failure
+         *
+         * @param string $url
+         * @return object
+         */
+        public function getUserByUrl($url = "")
+        {
+            $cacheKey = Helper::normalize($url);
             if ($this->cacheEnabled) {
                 if ($this->cacheEngine->get($cacheKey)) {
                     return $this->cacheEngine->get($cacheKey);
                 }
             }
-            $username = urlencode($username);
-            $result = $this->remote_call("https://www.tiktok.com/@{$username}?lang=en", false);
+            if (!preg_match("/https?:\/\/([^\.]+)?\.tiktok\.com/", $url)) {
+                throw new \Exception("Invalid USER URL");
+            }
+            $result = $this->remote_call($url, false);
             $json_string = $this->parse_json($result);
             if (!empty($json_string)) {
                 $jsonData = json_decode($json_string);
@@ -443,7 +458,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * User Feed
-         * 
+         *
          * Accepts username and $maxCursor pagination offset and returns user video feed object or false on failure
          *
          * @param string $username
@@ -497,7 +512,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Video by video id
-         * 
+         *
          * Accept video ID and returns video detail object or false on failure
          *
          * @param string $video_id
@@ -512,7 +527,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Video by video url
-         * 
+         *
          * Accepts tiktok video url and returns video detail object or false on failure
          *
          * @param string $url
@@ -562,7 +577,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Remote request
-         * 
+         *
          * @param string $url
          * @param boolean $isJson
          * @return object
@@ -607,7 +622,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Failure? Huh?
-         * 
+         *
          * Be a man and accept the failure
          *
          * @return void
@@ -620,11 +635,11 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
         }
         /**
          * Verify Fingerprint Token
-         * 
+         *
          * Fingerprint structure has changed, will update this soon.
-         * 
+         *
          * Or Never
-         * 
+         *
          * @return void
          */
         public function verify_fp()
