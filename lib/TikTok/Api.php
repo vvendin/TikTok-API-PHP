@@ -575,6 +575,60 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
             }
             return $this->failure();
         }
+        public function parseShortUrl($url = "")
+        {
+            $cacheKey = Helper::normalize('short-' . $url);
+            if ($this->cacheEnabled) {
+                if ($this->cacheEngine->get($cacheKey)) {
+                    return $this->cacheEngine->get($cacheKey);
+                }
+            }
+            if (!preg_match("/https?:\/\/([^\.]+)?\.tiktok\.com/", $url)) {
+                throw new \Exception("Invalid URL");
+            }
+            $result = $this->remote_call($url, false);
+            $json_string = $this->parse_json($result);
+            if (!empty($json_string)) {
+                $jsonData = json_decode($json_string);
+
+                $isAccount = isset($jsonData->UserPage);
+                $isVideo = isset($jsonData->ItemList->video);
+                if (! $isAccount && ! $isVideo) {
+                    return $this->failure();
+                }
+
+                $result = [];
+                if ($isAccount) {
+                    if ($jsonData->UserPage->statusCode !== 0) {
+                        return $this->failure();
+                    }
+                    $result = [
+                        'account_id' => $jsonData->UserPage->uniqueId,
+                        'video_id' => false,
+                    ];
+                }
+                else if ($isVideo) {
+                    if ($jsonData->ItemList->video->statusCode !== 0) {
+                        return $this->failure();
+                    }
+                    $videoId = $jsonData->ItemList->video->keyword;
+                    $video = $jsonData->ItemModule->{$videoId};
+                    $username = $video->author;
+
+                    $result = [
+                        'account_id' => $username,
+                        'video_id' => $videoId,
+                    ];
+                }
+                $result = (object)$result;
+
+                if ($this->cacheEnabled) {
+                    $this->cacheEngine->set($cacheKey, $result, $this->_config['cache-timeout']);
+                }
+                return $result;
+            }
+            return $this->failure();
+        }
         /**
          * Remote request
          *
