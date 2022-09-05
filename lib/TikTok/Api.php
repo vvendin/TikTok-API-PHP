@@ -442,17 +442,30 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
             $result = $this->remote_call($url, false);
             $json_string = $this->parse_json($result);
             if (!empty($json_string)) {
-                $jsonData = json_decode($json_string);
-                if (isset($jsonData->UserModule, $jsonData->UserPage)) {
-                    $result = (object) [
-                        'user' => $jsonData->UserModule->users->{$jsonData->UserPage->uniqueId},
-                        'stats' => $jsonData->UserModule->stats->{$jsonData->UserPage->uniqueId}
-                    ];
-                    if ($this->cacheEnabled) {
-                        $this->cacheEngine->set($cacheKey, $result, $this->_config['cache-timeout']);
-                    }
-                    return $result;
+                $jsonData = json_decode($json_string, true);
+                if (isset($jsonData['UserModule'], $jsonData['UserPage'])) {
+                    // desktop
+                    $moduleKey = 'UserModule';
+                    $userKey = 'UserPage';
+                } elseif (isset($jsonData['MobileUserModule'], $jsonData['MobileUserPage'])) {
+                    // mobile
+                    $moduleKey = 'MobileUserModule';
+                    $userKey = 'MobileUserPage';
+                } else {
+                    return $this->failure();
                 }
+
+                $userId = $jsonData[$userKey]['uniqueId'];
+                $result = [
+                    'user' => $jsonData[$moduleKey]['users'][$userId],
+                    'stats' => $jsonData[$moduleKey]['stats'][$userId],
+                ];
+                $result = json_decode(json_encode($result), false);
+
+                if ($this->cacheEnabled) {
+                    $this->cacheEngine->set($cacheKey, $result, $this->_config['cache-timeout']);
+                }
+                return $result;
             }
             return $this->failure();
         }
@@ -547,31 +560,48 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
             $result = $this->remote_call($url, false);
             $result = $this->parse_json($result);
             if (!empty($result)) {
-                $jsonData = json_decode($result);
-                if (isset($jsonData->ItemModule, $jsonData->ItemList, $jsonData->UserModule)) {
-                    $id = $jsonData->ItemList->video->keyword;
-                    $item = $jsonData->ItemModule->{$id};
-                    $username = $item->author;
-                    $result = (object) [
-                        'statusCode' => 0,
-                        'info'       => (object) [
-                            'type'   => 'video',
-                            'detail' => (object) [
-                                "url" => $url,
-                                "user" => $jsonData->UserModule->users->{$username},
-                                "stats" => $item->stats
+                $jsonData = json_decode($result, true);
+                if ($jsonData['AppContext']['appContext']['isMobile'] === false) {
+                    // desktop
+                    $id = $jsonData['ItemList']['video']['keyword'];
+                    $item = $jsonData['ItemModule'][$id];
+                    $username = $item['author'];
+                    $result = [
+                        'info' => [
+                            'type' => 'video',
+                            'detail' => [
+                                'url' => $url,
+                                'user' => $jsonData['UserModule']['users'][$username],
+                                'stats' => $item['stats']
                             ],
                         ],
-                        "items"      => [$item],
-                        "hasMore"    => false,
-                        "minCursor"  => '0',
-                        "maxCursor"  => '0'
+                        'items' => [$item],
                     ];
-                    if ($this->cacheEnabled) {
-                        $this->cacheEngine->set($cacheKey, $result, $this->_config['cache-timeout']);
-                    }
-                    return $result;
+                } else {
+                    // mobile
+                    $data = $jsonData['SharingVideoModule']['videoData']['itemInfo']['itemStruct'];
+                    $result = [
+                        'info' => [
+                            'type' => 'video',
+                            'detail' => [
+                                'url' => $url,
+                                'user' => $data['author'],
+                                'stats' => $data['stats']
+                            ],
+                        ],
+                        'items' => [$data],
+                    ];
                 }
+                $result['statusCode'] = 0;
+                $result['hasMore'] = false;
+                $result['minCursor'] = '0';
+                $result['maxCursor'] = '0';
+                $result = json_decode(json_encode($result), false);
+
+                if ($this->cacheEnabled) {
+                    $this->cacheEngine->set($cacheKey, $result, $this->_config['cache-timeout']);
+                }
+                return $result;
             }
             return $this->failure();
         }
@@ -583,43 +613,73 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
                     return $this->cacheEngine->get($cacheKey);
                 }
             }
-            if (!preg_match("/https?:\/\/([^\.]+)?\.tiktok\.com/", $url)) {
-                throw new \Exception("Invalid URL");
+            if (!preg_match("/https?:\/\/(vm|vt)?\.tiktok\.com/", $url)) {
+                throw new \Exception("Invalid short URL");
             }
             $result = $this->remote_call($url, false);
             $json_string = $this->parse_json($result);
             if (!empty($json_string)) {
-                $jsonData = json_decode($json_string);
-
-                $isAccount = isset($jsonData->UserPage);
-                $isVideo = isset($jsonData->ItemList->video);
-                if (! $isAccount && ! $isVideo) {
-                    return $this->failure();
-                }
-
-                $result = [];
-                if ($isAccount) {
-                    if ($jsonData->UserPage->statusCode !== 0) {
+                $jsonData = json_decode($json_string, true);
+                if ($jsonData['AppContext']['appContext']['isMobile'] === false) {
+                    //desktop
+                    $isAccount = isset($jsonData['UserPage']);
+                    $isVideo = isset($jsonData['ItemList']['video']);
+                    if (! $isAccount && ! $isVideo) {
                         return $this->failure();
                     }
-                    $result = [
-                        'account_id' => $jsonData->UserPage->uniqueId,
-                        'video_id' => false,
-                    ];
-                }
-                else if ($isVideo) {
-                    if ($jsonData->ItemList->video->statusCode !== 0) {
+
+                    if ($isAccount) {
+                        if ($jsonData['UserPage']['statusCode'] !== 0) {
+                            return $this->failure();
+                        }
+                        $result = [
+                            'account_id' => $jsonData['UserPage']['uniqueId'],
+                            'video_id' => false,
+                        ];
+                    } elseif ($isVideo) {
+                        if ($jsonData['ItemList']['video']['statusCode'] !== 0) {
+                            return $this->failure();
+                        }
+                        $videoId = $jsonData['ItemList']['video']['keyword'];
+                        $video = $jsonData['ItemModule'][$videoId];
+                        $username = $video['author'];
+
+                        $result = [
+                            'account_id' => $username,
+                            'video_id' => $videoId,
+                        ];
+                    }
+                } else {
+                    //mobile
+                    $isAccount = isset($jsonData['SharingUserModule']);
+                    $isVideo = isset($jsonData['SharingVideoModule']['videoData']['itemInfo']['itemStruct']);
+
+                    if (! $isAccount && ! $isVideo) {
                         return $this->failure();
                     }
-                    $videoId = $jsonData->ItemList->video->keyword;
-                    $video = $jsonData->ItemModule->{$videoId};
-                    $username = $video->author;
 
-                    $result = [
-                        'account_id' => $username,
-                        'video_id' => $videoId,
-                    ];
+                    if ($isAccount) {
+                        if ($jsonData['SharingUserModule']['statusCode'] !== 0) {
+                            return $this->failure();
+                        }
+                        $result = [
+                            'account_id' => $jsonData['SharingUserModule']['userInfo']['user']['uniqueId'],
+                            'video_id' => false,
+                        ];
+                    }
+
+                    if ($isVideo) {
+                        $data = $jsonData['SharingVideoModule']['videoData']['itemInfo']['itemStruct'];
+                        if ($jsonData['SharingVideoModule']['videoData']['statusCode'] !== 0) {
+                            return $this->failure();
+                        }
+                        $result = [
+                            'account_id' => $data['author']['uniqueId'],
+                            'video_id' => $data['id'],
+                        ];
+                    }
                 }
+
                 $result = (object)$result;
 
                 if ($this->cacheEnabled) {
@@ -650,7 +710,7 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
                 CURLOPT_CONNECTTIMEOUT => 30,
                 CURLOPT_SSL_VERIFYHOST => false,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_TIMEOUT        => 15, // always fails with timeout error when over 30 sec
                 CURLOPT_MAXREDIRS      => 10,
                 CURLOPT_HTTPHEADER     => array_merge([], $headers),
                 CURLOPT_COOKIEJAR      => $this->_config['cookie_file'],
@@ -668,7 +728,11 @@ if (!\class_exists('\Sovit\TikTok\Api')) {
                 }
             }
             $data = curl_exec($ch);
+            $error = curl_error($ch);
             curl_close($ch);
+            if ($error !== '') {
+                throw new \Exception('curl error occurred: ' . $error);
+            }
             if ($isJson) {
                 $data = json_decode($data);
             }
